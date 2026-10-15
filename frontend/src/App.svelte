@@ -1,6 +1,5 @@
 <script>
   import { onMount } from "svelte";
-  import { LoaderCircle, RefreshCw } from "lucide-svelte";
   import { api } from "./lib/api.js";
   import { mediaKind } from "./lib/format.js";
   import { loadDashboard } from "./lib/storage-dashboard.js";
@@ -9,7 +8,7 @@
   import DeleteFileDialog from "./lib/components/DeleteFileDialog.svelte";
   import FilePreviewModal from "./lib/components/FilePreviewModal.svelte";
   import FileTable from "./lib/components/FileTable.svelte";
-  import NotificationToast from "./lib/components/NotificationToast.svelte";
+  import Icon from "./lib/components/Icon.svelte";
   import PresignedUrlModal from "./lib/components/PresignedUrlModal.svelte";
   import StorageSummary from "./lib/components/StorageSummary.svelte";
   import UploadPanel from "./lib/components/UploadPanel.svelte";
@@ -19,33 +18,35 @@
   let listError = "";
   let loading = true;
   let serverOnline = false;
-  let selectedFiles = [];
   let uploading = false;
   let uploadProgress = 0;
   let uploadStatus = "";
   let search = "";
-  let toast = null;
+  let notice = null;
   let preview = null;
   let urlDialog = null;
   let deleteDialog = null;
   let copiedValue = "";
-  let toastTimer;
+  let noticeTimer;
   let copyTimer;
 
   onMount(() => {
     fetchAll();
     return () => {
-      clearTimeout(toastTimer);
+      clearTimeout(noticeTimer);
       clearTimeout(copyTimer);
     };
   });
 
   function notify(message, type = "success") {
-    clearTimeout(toastTimer);
-    toast = { message, type };
-    toastTimer = setTimeout(() => {
-      toast = null;
-    }, 3600);
+    clearTimeout(noticeTimer);
+    notice = { message, type };
+    noticeTimer = setTimeout(
+      () => {
+        notice = null;
+      },
+      type === "error" ? 6000 : 4000,
+    );
   }
 
   async function fetchAll() {
@@ -59,24 +60,17 @@
     if (dashboard.listError) notify(dashboard.listError, "error");
   }
 
-  function selectFiles(nextFiles) {
-    selectedFiles = nextFiles;
-    uploadProgress = 0;
-    uploadStatus = "";
+  async function refresh() {
+    await fetchAll();
+    if (!listError) notify("Daftar objek telah diperbarui.");
   }
 
-  function clearSelection() {
-    selectedFiles = [];
-    uploadProgress = 0;
-    uploadStatus = "";
-  }
-
-  async function uploadSelected() {
-    if (!selectedFiles.length || uploading) return;
+  async function uploadSelected(selected) {
+    if (!selected.length || uploading) return;
     uploading = true;
     uploadProgress = 0;
     const { succeeded, failed } = await uploadFiles(
-      selectedFiles,
+      selected,
       (progress) => {
         uploadProgress = progress;
       },
@@ -88,9 +82,8 @@
     uploadStatus = "";
 
     if (succeeded) {
-      clearSelection();
       notify(
-        `${succeeded} file berhasil diunggah ke S3${failed.length ? `, ${failed.length} gagal` : ""}`,
+        `${succeeded} file berhasil diunggah${failed.length ? `, ${failed.length} gagal` : ""}.`,
         failed.length ? "error" : "success",
       );
       await fetchAll();
@@ -102,7 +95,7 @@
   async function previewFile(file) {
     try {
       const signed = await api.getPresignedUrl(file.name);
-      preview = { ...signed, kind: mediaKind(file.name), error: false };
+      preview = { ...signed, kind: mediaKind(file.name), file };
     } catch (error) {
       notify(`Gagal membuka file: ${error.message}`, "error");
     }
@@ -129,7 +122,7 @@
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
-      notify(`Download ${file.name} dimulai`);
+      notify(`Unduhan ${file.name} dimulai.`);
     } catch (error) {
       notify(`Gagal membuat URL download: ${error.message}`, "error");
     }
@@ -144,7 +137,7 @@
     deleteDialog.loading = true;
     try {
       await api.deleteFile(deleteDialog.name);
-      notify(`${deleteDialog.name} berhasil dihapus`);
+      notify(`${deleteDialog.name} dihapus dari bucket.`);
       deleteDialog = null;
       await fetchAll();
     } catch (error) {
@@ -170,47 +163,56 @@
     if (event.key === "Escape") {
       preview = null;
       urlDialog = null;
-      deleteDialog = null;
+      if (!deleteDialog?.loading) deleteDialog = null;
     }
   }
 </script>
 
 <svelte:window onkeydown={closeDialogs} />
 
-<div class="app-shell">
+<div class="flex min-h-screen flex-col bg-[#F7F8F7] text-[#17211D]">
   <AppHeader online={serverOnline} />
-  <main class="content">
-    <div class="page-heading">
+
+  <main
+    class="mx-auto w-full max-w-[1440px] flex-1 px-5 py-9 sm:px-8 sm:py-12 lg:px-12"
+  >
+    <div class="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
       <div>
-        <p class="eyebrow">PENYIMPANAN</p>
-        <h1>Object Storage</h1>
-        <p class="subheading">Kelola file di bucket S3 dari satu dashboard.</p>
+        <nav
+          aria-label="Breadcrumb"
+          class="mb-3 flex items-center gap-1.5 text-[13px] text-[#6B7770]"
+        >
+          <span>bucket</span>
+          <Icon name="chevron" class="size-3.5" />
+          <span class="font-medium text-[#425149]">{info?.bucket || "—"}</span>
+        </nav>
+        <h1 class="text-[30px] font-semibold leading-tight tracking-[-0.035em]">
+          Object Storage
+        </h1>
+        <p class="mt-2 max-w-2xl text-[15px] leading-6 text-[#59665F]">
+          Manage files and assets in your S3 bucket from a single location
+        </p>
       </div>
       <button
-        class="button button-secondary refresh-button"
-        onclick={fetchAll}
+        onclick={refresh}
         disabled={loading}
-        title="Muat ulang daftar"
+        class="inline-flex h-10 shrink-0 items-center justify-center gap-2 self-start rounded-lg border border-[#CBD4CE] bg-white px-4 text-[14px] font-medium text-[#27362F] transition hover:border-[#AEBBB4] hover:bg-[#FAFBFA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#16745A] disabled:cursor-wait disabled:opacity-60"
       >
-        {#if loading}<LoaderCircle size={16} class="spin" />{:else}<RefreshCw
-            size={16}
-          />{/if}<span>Refresh</span>
+        <Icon name="refresh" class="size-4 {loading ? 'animate-spin' : ''}" />
+        {loading ? "Memperbarui..." : "Perbarui"}
       </button>
     </div>
 
     <StorageSummary {info} />
     <UploadPanel
-      {selectedFiles}
       {uploading}
       progress={uploadProgress}
       status={uploadStatus}
-      onSelect={selectFiles}
-      onClear={clearSelection}
+      {notice}
       onUpload={uploadSelected}
     />
     <FileTable
       {files}
-      {info}
       {loading}
       online={serverOnline}
       error={listError}
@@ -223,27 +225,15 @@
       onUrl={showUrl}
       onDelete={askDelete}
     />
-    <footer class="page-footer">
-      Bucket {info?.bucket || "MinIO"} <span>·</span>Masa berlaku URL {info?.presign_expiry ||
-        "—"}
-    </footer>
   </main>
 </div>
 
-<NotificationToast
-  {toast}
-  onClose={() => {
-    toast = null;
-  }}
-/>
 <FilePreviewModal
   {preview}
   onClose={() => {
     preview = null;
   }}
-  onCopy={copyUrl}
   onDownload={downloadFile}
-  copied={copiedValue === preview?.url}
 />
 <PresignedUrlModal
   {urlDialog}

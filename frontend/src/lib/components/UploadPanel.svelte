@@ -1,114 +1,126 @@
 <script>
-  import { File, LoaderCircle, Upload } from "lucide-svelte";
-  import { formatSize } from "../format.js";
+  import Icon from "./Icon.svelte";
 
-  let {
-    selectedFiles = [],
-    uploading = false,
-    progress = 0,
-    status = "",
-    onSelect,
-    onClear,
-    onUpload,
-  } = $props();
+  let { uploading = false, progress = 0, status = "", notice = null, onUpload } =
+    $props();
 
   let fileInput = $state();
-  let isDragging = $state(false);
+  let dragging = $state(false);
 
-  function selectFiles(event) {
-    onSelect(Array.from(event.currentTarget.files || []));
-    event.currentTarget.value = "";
+  function pick(files) {
+    const selected = Array.from(files || []);
+    if (selected.length) onUpload(selected);
   }
 
-  function dropFiles(event) {
+  function handleDrop(event) {
     event.preventDefault();
-    isDragging = false;
-    onSelect(Array.from(event.dataTransfer.files || []));
+    dragging = false;
+    if (!uploading) pick(event.dataTransfer.files);
   }
 
-  let totalSize = $derived(
-    selectedFiles.reduce((sum, file) => sum + file.size, 0),
-  );
+  function handleDragLeave(event) {
+    if (!event.currentTarget.contains(event.relatedTarget)) dragging = false;
+  }
 </script>
 
-<section class="upload-section" aria-labelledby="upload-title">
-  <div class="section-heading">
-    <div>
-      <h2 id="upload-title">Unggah file</h2>
-      <p>File dikirim langsung ke S3 menggunakan URL bertanda tangan.</p>
-    </div>
-    <span class="direct-label"><span></span>Direct upload</span>
-  </div>
-
+<section class="mt-8">
   <div
-    class:dragging={isDragging}
-    class="dropzone"
-    role="button"
-    tabindex="0"
-    aria-label="Pilih file atau seret file ke sini"
-    onkeydown={(event) => {
-      if (event.key === "Enter" || event.key === " ") fileInput?.click();
-    }}
-    onclick={() => fileInput?.click()}
-    ondragover={(event) => {
+    role="group"
+    aria-label="Area unggah file"
+    ondragenter={(event) => {
       event.preventDefault();
-      isDragging = true;
+      dragging = true;
     }}
-    ondragleave={() => {
-      isDragging = false;
-    }}
-    ondrop={dropFiles}
+    ondragover={(event) => event.preventDefault()}
+    ondragleave={handleDragLeave}
+    ondrop={handleDrop}
+    class="flex min-h-28 flex-col items-center justify-center rounded-xl border border-dashed px-6 py-5 text-center transition sm:flex-row sm:justify-between sm:text-left {dragging
+      ? 'border-[#16745A] bg-[#F1F8F5]'
+      : 'border-[#BFC9C3] bg-white'}"
   >
+    <div class="flex min-w-0 flex-col items-center gap-3 sm:flex-row">
+      <div
+        class="flex size-10 shrink-0 items-center justify-center rounded-lg {dragging
+          ? 'bg-[#DDEFE8] text-[#16745A]'
+          : 'bg-[#F1F3F2] text-[#59665F]'}"
+      >
+        <Icon name="upload" class="size-5" />
+      </div>
+      <div class="min-w-0">
+        <div class="text-[15px] font-medium">
+          {#if uploading}
+            {status || "Mengunggah..."}
+          {:else if dragging}
+            Lepaskan file untuk mengunggah
+          {:else}
+            Upload file
+          {/if}
+        </div>
+        <div class="mt-1 text-[13px] text-[#6B7770]">
+          {#if uploading}
+            {progress}% selesai
+          {:else}
+            Drag and drop files here, or select them from your device
+          {/if}
+        </div>
+      </div>
+    </div>
     <input
       bind:this={fileInput}
       type="file"
       multiple
-      hidden
-      onclick={(event) => event.stopPropagation()}
-      onchange={selectFiles}
+      class="sr-only"
+      tabindex="-1"
+      onchange={(event) => {
+        pick(event.currentTarget.files);
+        event.currentTarget.value = "";
+      }}
     />
-    <span class="drop-icon"><Upload size={21} /></span>
-    <div class="drop-copy">
-      <strong
-        >{selectedFiles.length
-          ? `${selectedFiles.length} file dipilih`
-          : "Tarik file ke sini"}</strong
-      >
-      <span
-        >{selectedFiles.length
-          ? selectedFiles.map((file) => file.name).join(", ")
-          : "atau klik untuk memilih dari perangkat"}</span
-      >
-    </div>
-    <span class="browse-label">Pilih file</span>
+    <button
+      onclick={() => fileInput?.click()}
+      disabled={uploading}
+      class="mt-4 inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-[#16745A] px-4 text-[14px] font-medium text-white transition hover:bg-[#125F49] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#16745A] disabled:opacity-60 sm:mt-0"
+    >
+      Pilih file
+    </button>
   </div>
 
-  {#if selectedFiles.length}
-    <div class="upload-actions">
-      <div class="selected-summary">
-        <File size={15} />{selectedFiles.length} file · {formatSize(totalSize)}
-      </div>
-      <div class="button-row">
-        <button
-          class="button button-quiet"
-          onclick={onClear}
-          disabled={uploading}>Batal</button
-        >
-        <button
-          class="button button-primary"
-          onclick={onUpload}
-          disabled={uploading}
-        >
-          {#if uploading}<LoaderCircle size={16} class="spin" />{status ||
-              "Mengunggah"}{:else}<Upload size={16} />Unggah file{/if}
-        </button>
-      </div>
+  {#if uploading}
+    <div
+      class="mt-3 h-1.5 overflow-hidden rounded-full bg-[#E8ECE9]"
+      role="progressbar"
+      aria-label="Progres upload"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow={progress}
+    >
+      <div
+        class="h-full rounded-full bg-[#16745A] transition-[width]"
+        style:width="{progress}%"
+      ></div>
     </div>
   {/if}
 
-  {#if uploading}
-    <div class="progress-track" aria-label={`Progres upload ${progress}%`}>
-      <span style={`width:${progress}%`}></span>
+  {#if notice}
+    <div
+      role={notice.type === "error" ? "alert" : "status"}
+      class="mt-3 flex items-center gap-2 text-[13px] font-medium {notice.type ===
+      'error'
+        ? 'text-[#A13A36]'
+        : 'text-[#116149]'}"
+    >
+      <span
+        class="flex size-5 shrink-0 items-center justify-center rounded-full {notice.type ===
+        'error'
+          ? 'bg-[#FCF2F1]'
+          : 'bg-[#E1F1EB]'}"
+      >
+        <Icon
+          name={notice.type === "error" ? "alert" : "check"}
+          class="size-3.5"
+        />
+      </span>
+      {notice.message}
     </div>
   {/if}
 </section>

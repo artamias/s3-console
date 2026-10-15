@@ -1,11 +1,12 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, loadEnv } from 'vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
   return {
-    plugins: [svelte()],
+    plugins: [tailwindcss(), svelte()],
     server: {
       host: env.VITE_DEV_HOST || 'localhost',
       proxy: {
@@ -21,4 +22,3 @@ export default defineConfig(({ mode }) => {
     },
   };
 });
-2;
